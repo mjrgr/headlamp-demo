@@ -1,0 +1,89 @@
+services:
+  kwok:
+    container_name: kwok
+    image: "ghcr.io/kwok-ci/cluster:v${KWOK_VERSION}-k8s.v${KWOK_K8S_VERSION}"
+    restart: always
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: kwokctl kubectl cluster-info
+      interval: 3s
+      timeout: 5s
+      retries: 5
+      start_period: 3s
+  kwok-init:
+    container_name: kwok-init
+    image: bitnami/kubectl
+    restart: no
+    entrypoint: bash
+    command:
+      - -c
+      - |
+        NB_NODES=10
+        echo "Creating $${NB_NODES} nodes"
+
+        for i in $(seq 1 "$${NB_NODES}"); do
+            {
+            kubectl apply -f - <<EOF
+        apiVersion: v1
+        kind: Node
+        metadata:
+          annotations:
+            node.alpha.kubernetes.io/ttl: "0"
+            kwok.x-k8s.io/node: fake
+          labels:
+            beta.kubernetes.io/arch: amd64
+            beta.kubernetes.io/os: linux
+            kubernetes.io/arch: amd64
+            kubernetes.io/hostname: kwok-node-$$i
+            kubernetes.io/os: linux
+            kubernetes.io/role: agent
+            node-role.kubernetes.io/agent: ""
+            type: kwok
+            atmNode: 'true'
+          name: kwok-node-$$i
+        status:
+          allocatable:
+            cpu: 32
+            memory: 256Gi
+            pods: 110
+          capacity:
+            cpu: 32
+            memory: 256Gi
+            pods: 110
+          nodeInfo:
+            architecture: amd64
+            bootID: ""
+            containerRuntimeVersion: ""
+            kernelVersion: ""
+            kubeProxyVersion: v${KWOK_K8S_VERSION}
+            kubeletVersion: v${KWOK_K8S_VERSION}
+            machineID: ""
+            operatingSystem: linux
+            osImage: ""
+            systemUUID: ""
+          phase: Running
+        EOF
+          }
+          done
+          echo "$${NB_NODES} nodes created successfully"
+
+    volumes:
+      - ./kubeconfig.yml:/.kube/config
+    depends_on:
+      kwok:
+        condition: service_healthy
+  headlamp:
+    container_name: headlamp
+    image: "ghcr.io/headlamp-k8s/headlamp:${HEADLAMP_VERSION}"
+    restart: always
+    volumes:
+      - ./kubeconfig.yml:/home/headlamp/.kube/config
+    environment:
+      KUBECONFIG: "/home/headlamp/.kube/config"
+    ports:
+      - "4466:4466"
+    depends_on:
+      kwok:
+        condition: service_healthy
+
